@@ -123,4 +123,24 @@ app.get('/api/search', async (req, res) => {
   res.json({ tweets, instance: result.instance });
 });
 
+// どのRSSソースがこのサーバーから繋がるか確認用
+app.get('/api/test', async (req, res) => {
+  const tests = [
+    { name: 'nitter.net RSS',          url: 'https://nitter.net/elonmusk/rss' },
+    { name: 'nitter.poast.org RSS',    url: 'https://nitter.poast.org/elonmusk/rss' },
+    { name: 'rsshub.app twitter',      url: 'https://rsshub.app/twitter/user/elonmusk' },
+    { name: 'rsshub.rssforever.com',   url: 'https://rsshub.rssforever.com/twitter/user/elonmusk' },
+    { name: 'hub.slar.run',            url: 'https://hub.slar.run/twitter/user/elonmusk' },
+  ];
+  const results = await Promise.all(tests.map(async t => {
+    try {
+      const feed = await parser.parseURL(t.url);
+      return { name: t.name, ok: true, items: feed.items?.length || 0 };
+    } catch (e) {
+      return { name: t.name, ok: false, error: e.message.slice(0, 80) };
+    }
+  }));
+  res.json(results);
+});
+
 app.listen(PORT, () => console.log(`Server running at http://localhost:${PORT}`));
