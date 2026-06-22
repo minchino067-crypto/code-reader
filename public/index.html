@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>CodeReader - Documentation Browser</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #1e1e1e;
+    color: #d4d4d4;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 13px;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  #titlebar {
+    background: #323233;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    font-size: 12px;
+    color: #cccccc;
+    user-select: none;
+    flex-shrink: 0;
+  }
+  #titlebar span { margin-right: 20px; opacity: 0.8; cursor: default; }
+  #titlebar .title { flex: 1; text-align: center; color: #cccccc; }
+
+  #layout { display: flex; flex: 1; overflow: hidden; }
+
+  #activitybar {
+    width: 48px;
+    background: #333333;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 8px;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .activity-icon {
+    width: 36px; height: 36px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; border-radius: 4px; font-size: 18px; color: #858585;
+    border-left: 2px solid transparent;
+  }
+  .activity-icon:hover { color: #cccccc; }
+  .activity-icon.active { color: #ffffff; border-left-color: #ffffff; }
+
+  #sidebar {
+    width: 230px;
+    background: #252526;
+    border-right: 1px solid #1e1e1e;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  #sidebar-header {
+    padding: 6px 12px;
+    font-size: 11px;
+    font-weight: bold;
+    color: #bbbbbb;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    flex-shrink: 0;
+    border-bottom: 1px solid #3c3c3c;
+  }
+
+  #settings-area {
+    padding: 6px 10px;
+    border-bottom: 1px solid #3c3c3c;
+    flex-shrink: 0;
+  }
+  #settings-area input {
+    width: 100%;
+    background: #3c3c3c;
+    border: 1px solid #555;
+    color: #d4d4d4;
+    padding: 3px 6px;
+    font-family: inherit;
+    font-size: 11px;
+    border-radius: 2px;
+    margin-bottom: 3px;
+  }
+  #settings-area input:focus { outline: 1px solid #007acc; border-color: #007acc; }
+  #settings-area input::placeholder { color: #6b6b6b; }
+
+  .btn-row { display: flex; gap: 4px; }
+  .btn { flex: 1; background: #0e639c; color: #fff; border: none; padding: 3px 0; font-family: inherit; font-size: 11px; cursor: pointer; border-radius: 2px; }
+  .btn:hover { background: #1177bb; }
+  .btn.secondary { background: #3c3c3c; border: 1px solid #555; color: #ccc; }
+  .btn.secondary:hover { background: #505050; }
+
+  #filetree { flex: 1; overflow-y: auto; padding: 2px 0; }
+  #filetree::-webkit-scrollbar { width: 5px; }
+  #filetree::-webkit-scrollbar-thumb { background: #424242; border-radius: 3px; }
+
+  .tree-section-header {
+    padding: 3px 10px;
+    font-size: 10px;
+    color: #858585;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    cursor: default;
+    margin-top: 4px;
+  }
+
+  .tree-item {
+    padding: 2px 10px 2px 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    color: #d4d4d4;
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .tree-item:hover { background: #2a2d2e; }
+  .tree-item.active { background: #37373d; color: #fff; }
+  .tree-item .icon { font-size: 12px; flex-shrink: 0; }
+  .tree-item .label { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+  .tree-item .del { opacity: 0; font-size: 10px; flex-shrink: 0; padding: 0 3px; border-radius: 2px; }
+  .tree-item:hover .del { opacity: 0.4; }
+  .tree-item .del:hover { opacity: 1 !important; background: #555; }
+
+  #instance-badge { padding: 3px 10px; font-size: 10px; color: #4d7a50; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  #cmd-area { padding: 6px 10px; border-top: 1px solid #3c3c3c; flex-shrink: 0; }
+  #cmd-input {
+    width: 100%;
+    background: #3c3c3c;
+    border: 1px solid #555;
+    color: #d4d4d4;
+    padding: 3px 6px;
+    font-family: inherit;
+    font-size: 11px;
+    border-radius: 2px;
+  }
+  #cmd-input:focus { outline: 1px solid #007acc; border-color: #007acc; }
+  #cmd-input::placeholder { color: #6b6b6b; }
+
+  #editor { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+  #tabs {
+    background: #2d2d2d;
+    height: 32px;
+    display: flex;
+    align-items: flex-end;
+    overflow-x: auto;
+    flex-shrink: 0;
+    border-bottom: 1px solid #1e1e1e;
+  }
+  #tabs::-webkit-scrollbar { height: 2px; }
+  #tabs::-webkit-scrollbar-thumb { background: #555; }
+  .tab {
+    height: 32px;
+    padding: 0 12px;
+    display: flex; align-items: center; gap: 5px;
+    cursor: pointer;
+    background: #2d2d2d; color: #969696;
+    font-size: 12px;
+    border-top: 1px solid transparent;
+    white-space: nowrap; flex-shrink: 0;
+  }
+  .tab:hover { background: #1e1e1e; color: #cccccc; }
+  .tab.active { background: #1e1e1e; color: #fff; border-top-color: #007acc; }
+  .tab .close { opacity: 0; font-size: 13px; line-height: 1; border-radius: 3px; padding: 1px 3px; }
+  .tab:hover .close { opacity: 0.5; }
+  .tab .close:hover { opacity: 1; background: #555; }
+
+  #editor-content { flex: 1; overflow-y: auto; background: #1e1e1e; }
+  #editor-content::-webkit-scrollbar { width: 8px; }
+  #editor-content::-webkit-scrollbar-track { background: #1e1e1e; }
+  #editor-content::-webkit-scrollbar-thumb { background: #424242; border-radius: 4px; }
+
+  #welcome { padding: 32px 40px; color: #858585; }
+  #welcome h2 { color: #cccccc; font-size: 18px; margin-bottom: 12px; font-weight: normal; }
+  #welcome p { margin-bottom: 4px; font-size: 12px; line-height: 1.6; }
+  #welcome .hint { color: #569cd6; }
+  #welcome .key { display:inline-block; background:#3c3c3c; border:1px solid #555; border-radius:3px; padding:0 4px; font-size:11px; color:#bbbbbb; }
+
+  #tweet-list { display: none; }
+
+  .feed-header {
+    padding: 5px 16px;
+    background: #252526;
+    border-bottom: 1px solid #3c3c3c;
+    font-size: 11px;
+    color: #858585;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .feed-header .htitle { color: #569cd6; }
+  .feed-header .hcount { color: #6a9955; }
+  .feed-header .hrefresh { color: #858585; cursor: pointer; font-size: 11px; padding: 1px 6px; border-radius: 2px; }
+  .feed-header .hrefresh:hover { background: #3c3c3c; color: #ccc; }
+
+  .tweet-entry {
+    padding: 2px 0;
+    border-bottom: 1px solid #222;
+    display: flex;
+    font-size: 12px;
+    line-height: 1.35;
+  }
+  .tweet-entry:hover { background: #212121; }
+  .tweet-entry.is-rt { background: #1a2318; border-left: 3px solid #3a6b30; }
+  .tweet-entry.is-rt:hover { background: #1e2a1c; }
+
+  .line-num {
+    min-width: 40px;
+    text-align: right;
+    padding-right: 10px;
+    color: #3d4455;
+    user-select: none;
+    font-size: 11px;
+    flex-shrink: 0;
+    padding-top: 2px;
+  }
+
+  .tweet-body { flex: 1; min-width: 0; padding-right: 10px; }
+
+  .rt-bar {
+    font-size: 10px;
+    color: #4a8c3f;
+    background: #1e2f1c;
+    padding: 0 4px;
+    margin-bottom: 1px;
+    border-radius: 2px;
+    display: inline-block;
+  }
+
+  .tweet-meta { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+  .tweet-author { color: #4ec9b0; font-weight: bold; font-size: 12px; }
+  .tweet-time { color: #4a6e4a; font-size: 10px; }
+  .tweet-text { color: #d4d4d4; word-break: break-word; white-space: pre-wrap; font-size: 12px; }
+  .tweet-text .mention { color: #569cd6; }
+  .tweet-text .hashtag { color: #9cdcfe; }
+  .tweet-text .url { color: #7a6040; font-size: 10px; }
+
+  .img-toggle {
+    display: inline-block;
+    margin-top: 1px;
+    font-size: 10px;
+    color: #007acc;
+    cursor: pointer;
+    border: 1px solid #007acc44;
+    border-radius: 2px;
+    padding: 0 4px;
+    line-height: 15px;
+  }
+  .img-toggle:hover { background: #007acc22; }
+  .tweet-images { margin-top: 3px; display: none; }
+  .tweet-images img { max-width: 280px; max-height: 160px; border-radius: 3px; margin-right: 3px; margin-bottom: 2px; display: inline-block; cursor: zoom-in; }
+  .tweet-images img.zoomed { max-width: 100%; max-height: none; cursor: zoom-out; }
+
+  /* ブロック崩し */
+  #game-wrap {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    background: #1e1e1e;
+  }
+  #game-wrap.active { display: flex; }
+  #gameCanvas { border: 1px solid #3c3c3c; background: #0d0d0d; display: block; }
+  #game-info { color: #858585; font-size: 11px; margin-top: 6px; }
+  #game-info span { color: #4ec9b0; margin: 0 8px; }
+
+  #load-more { padding: 10px; text-align: center; display: none; }
+  #load-more button { background: #0e639c; color: #fff; border: none; padding: 4px 16px; font-family: inherit; font-size: 12px; cursor: pointer; border-radius: 2px; }
+  #load-more button:hover { background: #1177bb; }
+
+  #statusbar {
+    height: 20px;
+    background: #007acc;
+    display: flex; align-items: center;
+    padding: 0 10px;
+    font-size: 11px; color: #fff;
+    flex-shrink: 0; gap: 14px;
+  }
+  .sr { margin-left: auto; display: flex; gap: 14px; }
+  .si { opacity: 0.9; cursor: default; }
+
+  .loading { padding: 16px 40px; color: #858585; font-size: 12px; }
+  .err { padding: 8px 14px; color: #f48771; background: #3c1212; margin: 8px 14px; border-radius: 3px; border-left: 3px solid #f48771; font-size: 12px; }
+
+  #scroll-top {
+    position: fixed; bottom: 28px; right: 14px;
+    background: #3c3c3c; color: #d4d4d4;
+    border: 1px solid #555; width: 24px; height: 24px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; border-radius: 3px; font-size: 12px;
+    opacity: 0; transition: opacity 0.2s; z-index: 99;
+  }
+  #scroll-top.show { opacity: 0.6; }
+  #scroll-top:hover { opacity: 1 !important; }
+
+  /* TL更新中スピナー */
+  .tl-progress { font-size: 11px; color: #6a9955; }
+</style>
+</head>
+<body>
+
+<div id="titlebar">
+  <span>ファイル</span><span>編集</span><span>表示</span><span>ターミナル</span><span>ヘルプ</span>
+  <div class="title">CodeReader — Documentation Browser</div>
+</div>
+
+<div id="layout">
+  <div id="activitybar">
+    <div class="activity-icon active" title="エクスプローラー">📁</div>
+    <div class="activity-icon" title="検索" onclick="document.getElementById('cmd-input').focus()">🔍</div>
+    <div class="activity-icon" title="ソース管理">⎇</div>
+    <div class="activity-icon" title="拡張機能">🧩</div>
+  </div>
+
+  <div id="sidebar">
+    <div id="sidebar-header">エクスプローラー</div>
+
+    <div id="settings-area">
+      <input type="text" id="username-input" placeholder="@ユーザー名 を追加..." />
+      <div class="btn-row">
+        <button class="btn" onclick="addUser()">+ 追加</button>
+        <button class="btn secondary" onclick="openTimeline()">TL表示</button>
+      </div>
+    </div>
+
+    <div id="filetree">
+      <div class="tree-section-header">▾ FEEDS</div>
+      <div id="user-list"></div>
+      <div class="tree-section-header" style="margin-top:4px">▾ SEARCH</div>
+      <div id="search-list"></div>
+    </div>
+
+    <div id="instance-badge">// 接続待機中</div>
+
+    <div id="cmd-area">
+      <input type="text" id="cmd-input" placeholder="> 検索 (Enter)" />
+    </div>
+  </div>
+
+  <div id="editor">
+    <div id="tabs"></div>
+    <div id="editor-content">
+      <div id="welcome">
+        <h2>Documentation Browser</h2>
+        <p>1. <span class="hint">@ユーザー名</span> を入力して「追加」</p>
+        <p>2. サイドバーのユーザーをクリックしてフィード表示</p>
+        <p>3. 「TL表示」で全ユーザーの投稿をまとめて表示</p>
+        <p style="margin-top:10px"><span class="key">Ctrl+F</span> 検索 &nbsp; <span class="key">R</span> 更新 &nbsp; <span class="key">T</span> TL &nbsp; <span class="key">G</span> ゲーム</p>
+      </div>
+      <div id="tweet-list"></div>
+      <div id="load-more"></div>
+      <div id="game-wrap">
+        <canvas id="gameCanvas" width="480" height="320"></canvas>
+        <div id="game-info">
+          SCORE: <span id="g-score">0</span>
+          LIVES: <span id="g-lives">3</span>
+          &nbsp;|&nbsp; ←→ or マウスで操作 &nbsp; <span style="color:#858585">Spaceでスタート/ポーズ</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="statusbar">
+  <span class="si">⎇ main</span>
+  <span class="si" id="status-msg">準備完了</span>
+  <div class="sr">
+    <span class="si" id="status-count"></span>
+    <span class="si">UTF-8</span>
+    <span class="si">JSON</span>
+  </div>
+</div>
+
+<div id="scroll-top" onclick="document.getElementById('editor-content').scrollTo({top:0,behavior:'smooth'})">▲</div>
+
+<script>
+const S = {
+  users: JSON.parse(localStorage.getItem('nusers') || '[]'),
+  searches: JSON.parse(localStorage.getItem('nsearches') || '[]'),
+  currentTab: null,
+  tabs: [],
+  currentAction: null,
+  nextCursor: null,
+  lineNum: 1,
+};
+
+function save() {
+  localStorage.setItem('nusers', JSON.stringify(S.users));
+  localStorage.setItem('nsearches', JSON.stringify(S.searches));
+}
+
+function setStatus(msg) { document.getElementById('status-msg').textContent = msg; }
+function setInstance(inst) { document.getElementById('instance-badge').textContent = '// ' + (inst ? inst.replace('https://','') : '接続待機中'); }
+
+// --- ユーザー追加 ---
+async function addUser() {
+  const val = document.getElementById('username-input').value.trim().replace(/^@/, '');
+  if (!val) return;
+  if (!S.users.includes(val)) { S.users.push(val); save(); }
+  renderSidebar();
+  document.getElementById('username-input').value = '';
+  openUserFeed(val);
+}
+
+function removeUser(u) {
+  S.users = S.users.filter(x => x !== u);
+  save(); renderSidebar();
+  if (S.currentTab === 'u:' + u) clearEditor();
+}
+
+function removeSearch(q) {
+  S.searches = S.searches.filter(x => x !== q);
+  save(); renderSidebar();
+  if (S.currentTab === 's:' + q) clearEditor();
+}
+
+// --- サイドバー ---
+function renderSidebar() {
+  const ul = document.getElementById('user-list');
+  ul.innerHTML = '';
+  S.users.forEach(u => {
+    const el = document.createElement('div');
+    el.className = 'tree-item' + (S.currentTab === 'u:' + u ? ' active' : '');
+    el.innerHTML = `<span class="icon">📄</span><span class="label">@${esc(u)}.json</span><span class="del" onclick="event.stopPropagation();removeUser('${esc(u)}')">✕</span>`;
+    el.onclick = () => openUserFeed(u);
+    ul.appendChild(el);
+  });
+
+  const sl = document.getElementById('search-list');
+  sl.innerHTML = '';
+  S.searches.forEach(q => {
+    const el = document.createElement('div');
+    el.className = 'tree-item' + (S.currentTab === 's:' + q ? ' active' : '');
+    el.innerHTML = `<span class="icon">🔎</span><span class="label">${esc(q)}.search</span><span class="del" onclick="event.stopPropagation();removeSearch('${esc(q)}')">✕</span>`;
+    el.onclick = () => openSearch(q);
+    sl.appendChild(el);
+  });
+}
+
+// --- タブ ---
+function openTab(id, label, icon) {
+  if (!S.tabs.find(t => t.id === id)) S.tabs.push({ id, label, icon });
+  S.currentTab = id;
+  renderTabs(); renderSidebar();
+}
+
+function renderTabs() {
+  const tabs = document.getElementById('tabs');
+  tabs.innerHTML = '';
+  S.tabs.forEach(t => {
+    const el = document.createElement('div');
+    el.className = 'tab' + (S.currentTab === t.id ? ' active' : '');
+    el.innerHTML = `<span>${t.icon}</span><span>${esc(t.label)}</span><span class="close" onclick="closeTab(event,'${t.id}')">×</span>`;
+    el.onclick = () => reloadTab(t.id);
+    tabs.appendChild(el);
+  });
+}
+
+function closeTab(e, id) {
+  e.stopPropagation();
+  S.tabs = S.tabs.filter(t => t.id !== id);
+  if (S.currentTab === id) {
+    S.currentTab = S.tabs[S.tabs.length - 1]?.id || null;
+    if (S.currentTab) reloadTab(S.currentTab);
+    else clearEditor();
+  }
+  renderTabs(); renderSidebar();
+}
+
+function reloadTab(id) {
+  S.currentTab = id;
+  renderTabs(); renderSidebar();
+  if (id === 'game') { showGame(); return; }
+  hideGame();
+  if (id === 'tl') openTimeline(true);
+  else if (id.startsWith('u:')) openUserFeed(id.slice(2), true);
+  else if (id.startsWith('s:')) openSearch(id.slice(2), true);
+}
+
+function clearEditor() {
+  hideGame();
+  document.getElementById('welcome').style.display = 'block';
+  document.getElementById('tweet-list').style.display = 'none';
+  document.getElementById('load-more').innerHTML = '';
+  document.getElementById('status-count').textContent = '';
+  setInstance(null);
+}
+
+function showGame() {
+  document.getElementById('welcome').style.display = 'none';
+  document.getElementById('tweet-list').style.display = 'none';
+  document.getElementById('game-wrap').classList.add('active');
+  setStatus('breakout.exe');
+  gameInit();
+}
+
+function hideGame() {
+  document.getElementById('game-wrap').classList.remove('active');
+  gamePause();
+}
+
+function openGame() {
+  openTab('game', 'breakout.exe', '🎮');
+  showGame();
+}
+
+// --- タイムライン (全ユーザーまとめ) ---
+async function openTimeline(noTab) {
+  if (!noTab) openTab('tl', 'timeline.json', '📋');
+  S.currentAction = { type: 'tl' };
+
+  if (S.users.length === 0) {
+    showLoading('ユーザーを追加してください');
+    return;
+  }
+
+  document.getElementById('welcome').style.display = 'none';
+  const list = document.getElementById('tweet-list');
+  list.style.display = 'block';
+  list.innerHTML = `<div class="feed-header">
+    <span class="htitle">// timeline.json</span>
+    <span class="tl-progress" id="tl-prog">0 / ${S.users.length} 取得中...</span>
+  </div>`;
+  document.getElementById('load-more').innerHTML = '';
+  setStatus('タイムライン取得中...');
+
+  let all = [];
+  let done = 0;
+  let lastInstance = null;
+
+  await Promise.all(S.users.map(async u => {
+    try {
+      const res = await fetch(`/api/user/${encodeURIComponent(u)}`);
+      const data = await res.json();
+      if (data.tweets) all = all.concat(data.tweets);
+      if (data.instance) lastInstance = data.instance;
+    } catch (_) {}
+    done++;
+    const prog = document.getElementById('tl-prog');
+    if (prog) prog.textContent = `${done} / ${S.users.length} 取得中...`;
+  }));
+
+  // 時刻でソート (新しい順)
+  all.sort((a, b) => {
+    const ta = a.time ? new Date(a.time) : 0;
+    const tb = b.time ? new Date(b.time) : 0;
+    return tb - ta;
+  });
+
+  if (lastInstance) setInstance(lastInstance);
+
+  // ヘッダー更新
+  list.innerHTML = `<div class="feed-header">
+    <span class="htitle">// timeline.json — ${S.users.length} users</span>
+    <span class="hcount">${all.length} entries</span>
+  </div>`;
+
+  let ln = 1;
+  all.forEach(t => {
+    list.appendChild(makeTweetEl(t, ln++));
+  });
+
+  document.getElementById('status-count').textContent = `${all.length} entries`;
+  setStatus('準備完了');
+  document.getElementById('editor-content').scrollTo(0, 0);
+}
+
+// --- ユーザーフィード ---
+async function openUserFeed(username, noTab) {
+  if (!noTab) openTab('u:' + username, `@${username}.json`, '📄');
+  S.currentAction = { type: 'user', username };
+  S.nextCursor = null;
+  showLoading(`@${username} のフィードを取得中`);
+  try {
+    const res = await fetch(`/api/user/${encodeURIComponent(username)}`);
+    const data = await res.json();
+    if (data.error) { showError(data.error); return; }
+    if (data.instance) setInstance(data.instance);
+    S.nextCursor = data.nextCursor || null;
+    renderTweets(`@${username} のフィード`, data.tweets || []);
+  } catch (e) { showError(e.message); }
+}
+
+// --- 検索 ---
+async function openSearch(q, noTab) {
+  if (!noTab) {
+    if (!S.searches.includes(q)) { S.searches.push(q); save(); }
+    openTab('s:' + q, `${q}.search`, '🔎');
+    renderSidebar();
+  }
+  S.currentAction = { type: 'search', q };
+  S.nextCursor = null;
+  showLoading(`"${q}" を検索中`);
+  try {
+    const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+    const data = await res.json();
+    if (data.error) { showError(data.error); return; }
+    if (data.instance) setInstance(data.instance);
+    S.nextCursor = data.nextCursor || null;
+    renderTweets(`検索: "${q}"`, data.tweets || []);
+  } catch (e) { showError(e.message); }
+}
+
+// --- さらに読み込む ---
+async function loadMore() {
+  if (!S.nextCursor || !S.currentAction) return;
+  const btn = document.getElementById('load-more');
+  btn.innerHTML = '<span style="color:#858585">// 読み込み中...</span>';
+
+  try {
+    let url;
+    const a = S.currentAction;
+    if (a.type === 'user') url = `/api/user/${encodeURIComponent(a.username)}?cursor=${encodeURIComponent(S.nextCursor)}`;
+    else if (a.type === 'search') url = `/api/search?q=${encodeURIComponent(a.q)}&cursor=${encodeURIComponent(S.nextCursor)}`;
+    else return;
+
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.error) { showError(data.error); return; }
+    S.nextCursor = data.nextCursor || null;
+
+    const list = document.getElementById('tweet-list');
+    (data.tweets || []).forEach(t => list.appendChild(makeTweetEl(t, S.lineNum++)));
+
+    // カウント更新
+    const total = list.querySelectorAll('.tweet-entry').length;
+    document.getElementById('status-count').textContent = `${total} entries`;
+    setStatus('準備完了');
+    renderLoadMore();
+  } catch (e) {
+    showError(e.message);
+  }
+}
+
+function renderLoadMore() {
+  const btn = document.getElementById('load-more');
+  if (S.nextCursor) {
+    btn.innerHTML = '<button onclick="loadMore()">さらに読み込む</button>';
+    btn.style.display = 'block';
+  } else {
+    btn.innerHTML = '<span style="color:#495162;font-size:11px">// 終端</span>';
+    btn.style.display = 'block';
+  }
+}
+
+// --- ツイート描画 ---
+function renderTweets(title, tweets) {
+  S.lineNum = 1;
+  document.getElementById('welcome').style.display = 'none';
+  const list = document.getElementById('tweet-list');
+  list.style.display = 'block';
+  list.innerHTML = `<div class="feed-header">
+    <span class="htitle">// ${esc(title)}</span>
+    <span class="hcount" id="feed-count">${tweets.length} entries</span>
+  </div>`;
+  tweets.forEach(t => list.appendChild(makeTweetEl(t, S.lineNum++)));
+  document.getElementById('status-count').textContent = `${tweets.length} entries`;
+  setStatus('準備完了');
+  document.getElementById('editor-content').scrollTo(0, 0);
+  renderLoadMore();
+}
+
+function makeTweetEl(t, ln) {
+  const el = document.createElement('div');
+  el.className = 'tweet-entry' + (t.isRetweet ? ' is-rt' : '');
+
+  const rtBar = t.isRetweet
+    ? `<span class="rt-bar">↻ RT: @${esc(t.retweetedBy)} がリポスト</span> `
+    : '';
+
+  const hasImg = t.images && t.images.length > 0;
+  const imgHtml = hasImg
+    ? `<span class="img-toggle" onclick="toggleImages(this)">📷 ${t.images.length}枚</span><div class="tweet-images">${t.images.map(src => `<img src="${esc(src)}" loading="lazy" onclick="zoomImg(this)">`).join('')}</div>`
+    : '';
+
+  el.innerHTML = `
+    <div class="line-num">${ln}</div>
+    <div class="tweet-body">
+      <div class="tweet-meta">${rtBar}<span class="tweet-author">@${esc(t.author)}</span><span class="tweet-time">${t.time ? formatTime(t.time) : ''}</span></div>
+      <div class="tweet-text">${formatText(t.text)}</div>${imgHtml}
+    </div>`;
+  return el;
+}
+
+function toggleImages(btn) {
+  const wrap = btn.nextElementSibling;
+  const shown = wrap.style.display === 'block';
+  wrap.style.display = shown ? 'none' : 'block';
+  const count = btn.closest('.tweet-body').querySelectorAll('img').length;
+  btn.textContent = shown ? `📷 画像 ${count}枚を表示` : `📷 画像を隠す`;
+}
+
+function zoomImg(img) {
+  img.classList.toggle('zoomed');
+}
+
+function showLoading(msg) {
+  document.getElementById('welcome').style.display = 'none';
+  document.getElementById('tweet-list').style.display = 'block';
+  document.getElementById('tweet-list').innerHTML = `<div class="loading">// ${esc(msg)}...</div>`;
+  document.getElementById('load-more').innerHTML = '';
+  setStatus(msg + '...');
+}
+
+function showError(msg) {
+  document.getElementById('tweet-list').innerHTML = `<div class="err">// エラー: ${esc(msg)}</div>`;
+  setStatus('エラー');
+}
+
+// --- ユーティリティ ---
+function esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function formatText(s) {
+  return esc(s)
+    .replace(/@(\w+)/g, '<span class="mention">@$1</span>')
+    .replace(/#(\w+)/g, '<span class="hashtag">#$1</span>')
+    .replace(/(https?:\/\/[^\s&]+)/g, '<span class="url">$1</span>');
+}
+function formatTime(iso) {
+  const d = new Date(iso);
+  const y = d.getFullYear();
+  const mo = d.getMonth() + 1;
+  const day = d.getDate();
+  const h = d.getHours();
+  const mi = String(d.getMinutes()).padStart(2, '0');
+  return `${y}/${mo}/${day} ${h}:${mi}`;
+}
+
+// --- イベント ---
+document.getElementById('username-input').addEventListener('keydown', e => { if (e.key === 'Enter') addUser(); });
+document.getElementById('cmd-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    const q = e.target.value.trim();
+    if (q) { openSearch(q); e.target.value = ''; }
+  }
+});
+document.addEventListener('keydown', e => {
+  if (document.activeElement.tagName === 'INPUT') return;
+  if (e.ctrlKey && e.key === 'f') { e.preventDefault(); document.getElementById('cmd-input').focus(); }
+  if (e.key === 'r' || e.key === 'R') { if (S.currentTab && S.currentTab !== 'game') reloadTab(S.currentTab); }
+  if (e.key === 't' || e.key === 'T') openTimeline();
+  if (e.key === 'g' || e.key === 'G') openGame();
+  // ゲーム操作
+  if (S.currentTab === 'game') gameKey(e);
+});
+document.getElementById('editor-content').addEventListener('scroll', e => {
+  document.getElementById('scroll-top').classList.toggle('show', e.target.scrollTop > 200);
+});
+
+// 初期描画
+renderSidebar();
+renderTabs();
+
+// ===================== ブロック崩し =====================
+const G = {
+  canvas: null, ctx: null,
+  raf: null, running: false, paused: true,
+  score: 0, lives: 3,
+  ball: {}, pad: {}, blocks: [],
+  keys: {},
+};
+
+const BW = 480, BH = 320;
+const PAD_W = 72, PAD_H = 8, PAD_Y = BH - 24;
+const BALL_R = 6;
+const COLS = 10, ROWS = 5;
+const BLK_W = BW / COLS, BLK_H = 16, BLK_TOP = 32;
+
+const COLORS = ['#f44747','#ce9178','#dcdcaa','#4ec9b0','#569cd6'];
+
+function gameInit() {
+  G.canvas = document.getElementById('gameCanvas');
+  G.ctx = G.canvas.getContext('2d');
+  if (G.running) return;
+  resetGame();
+  G.canvas.addEventListener('mousemove', e => {
+    const rect = G.canvas.getBoundingClientRect();
+    G.pad.x = Math.max(0, Math.min(BW - PAD_W, e.clientX - rect.left - PAD_W / 2));
+  });
+  G.running = true;
+  G.paused = true;
+  drawFrame();
+}
+
+function gamePause() {
+  G.paused = true;
+  if (G.raf) { cancelAnimationFrame(G.raf); G.raf = null; }
+}
+
+function resetGame() {
+  G.score = 0; G.lives = 3;
+  G.pad = { x: BW / 2 - PAD_W / 2 };
+  resetBall();
+  buildBlocks();
+  updateHUD();
+}
+
+function resetBall() {
+  G.ball = { x: BW / 2, y: PAD_Y - BALL_R - 1, dx: 3.2, dy: -3.2 };
+  G.paused = true;
+}
+
+function buildBlocks() {
+  G.blocks = [];
+  for (let r = 0; r < ROWS; r++)
+    for (let c = 0; c < COLS; c++)
+      G.blocks.push({ x: c * BLK_W, y: BLK_TOP + r * BLK_H, w: BLK_W - 2, h: BLK_H - 2, color: COLORS[r], alive: true });
+}
+
+function updateHUD() {
+  document.getElementById('g-score').textContent = G.score;
+  document.getElementById('g-lives').textContent = G.lives;
+}
+
+function gameLoop() {
+  if (G.paused) return;
+  update();
+  drawFrame();
+  G.raf = requestAnimationFrame(gameLoop);
+}
+
+function update() {
+  // パッドキー操作
+  if (G.keys['ArrowLeft'])  G.pad.x = Math.max(0, G.pad.x - 5);
+  if (G.keys['ArrowRight']) G.pad.x = Math.min(BW - PAD_W, G.pad.x + 5);
+
+  G.ball.x += G.ball.dx;
+  G.ball.y += G.ball.dy;
+
+  // 壁
+  if (G.ball.x - BALL_R < 0)    { G.ball.x = BALL_R;       G.ball.dx *= -1; }
+  if (G.ball.x + BALL_R > BW)   { G.ball.x = BW - BALL_R;  G.ball.dx *= -1; }
+  if (G.ball.y - BALL_R < 0)    { G.ball.y = BALL_R;        G.ball.dy *= -1; }
+
+  // パッド
+  if (G.ball.y + BALL_R >= PAD_Y && G.ball.y + BALL_R <= PAD_Y + PAD_H &&
+      G.ball.x >= G.pad.x && G.ball.x <= G.pad.x + PAD_W) {
+    G.ball.dy = -Math.abs(G.ball.dy);
+    // 当たり位置で角度変化
+    const rel = (G.ball.x - (G.pad.x + PAD_W / 2)) / (PAD_W / 2);
+    G.ball.dx = rel * 5;
+  }
+
+  // 落下
+  if (G.ball.y - BALL_R > BH) {
+    G.lives--;
+    updateHUD();
+    if (G.lives <= 0) { gameOver(); return; }
+    resetBall();
+    drawFrame();
+    return;
+  }
+
+  // ブロック衝突
+  for (const b of G.blocks) {
+    if (!b.alive) continue;
+    if (G.ball.x + BALL_R > b.x && G.ball.x - BALL_R < b.x + b.w &&
+        G.ball.y + BALL_R > b.y && G.ball.y - BALL_R < b.y + b.h) {
+      b.alive = false;
+      G.ball.dy *= -1;
+      G.score += 10;
+      updateHUD();
+    }
+  }
+
+  // 全クリア
+  if (G.blocks.every(b => !b.alive)) {
+    buildBlocks();
+    G.ball.dx *= 1.05; G.ball.dy *= 1.05;
+  }
+}
+
+function drawFrame() {
+  const ctx = G.ctx;
+  ctx.clearRect(0, 0, BW, BH);
+
+  // 背景グリッド (VSCode風)
+  ctx.strokeStyle = '#1a2530';
+  ctx.lineWidth = 0.5;
+  for (let x = 0; x < BW; x += 32) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,BH); ctx.stroke(); }
+  for (let y = 0; y < BH; y += 32) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(BW,y); ctx.stroke(); }
+
+  // ブロック
+  G.blocks.forEach(b => {
+    if (!b.alive) return;
+    ctx.fillStyle = b.color;
+    ctx.fillRect(b.x, b.y, b.w, b.h);
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    ctx.fillRect(b.x, b.y, b.w, 3);
+  });
+
+  // パッド
+  ctx.fillStyle = '#007acc';
+  ctx.beginPath();
+  ctx.roundRect(G.pad.x, PAD_Y, PAD_W, PAD_H, 3);
+  ctx.fill();
+  // パッドのハイライト
+  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  ctx.fillRect(G.pad.x + 4, PAD_Y + 1, PAD_W - 8, 2);
+
+  // ボール
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(G.ball.x, G.ball.y, BALL_R, 0, Math.PI * 2);
+  ctx.fill();
+  // ボールの光
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.beginPath();
+  ctx.arc(G.ball.x - 2, G.ball.y - 2, 2, 0, Math.PI * 2);
+  ctx.fill();
+
+  // ポーズ表示
+  if (G.paused && G.running) {
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(0, 0, BW, BH);
+    ctx.fillStyle = '#cccccc';
+    ctx.font = '14px Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('Space キーでスタート', BW / 2, BH / 2);
+    ctx.font = '11px Consolas, monospace';
+    ctx.fillStyle = '#858585';
+    ctx.fillText('← → またはマウスでパッド操作', BW / 2, BH / 2 + 22);
+    ctx.textAlign = 'left';
+  }
+}
+
+function gameOver() {
+  G.paused = true;
+  if (G.raf) { cancelAnimationFrame(G.raf); G.raf = null; }
+  const ctx = G.ctx;
+  drawFrame();
+  ctx.fillStyle = 'rgba(0,0,0,0.65)';
+  ctx.fillRect(0, 0, BW, BH);
+  ctx.fillStyle = '#f44747';
+  ctx.font = 'bold 18px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('GAME OVER', BW / 2, BH / 2 - 10);
+  ctx.fillStyle = '#cccccc';
+  ctx.font = '12px Consolas, monospace';
+  ctx.fillText(`SCORE: ${G.score}`, BW / 2, BH / 2 + 14);
+  ctx.fillText('Space で再スタート', BW / 2, BH / 2 + 34);
+  ctx.textAlign = 'left';
+  G.running = false;
+}
+
+function gameKey(e) {
+  if (e.key === ' ') {
+    e.preventDefault();
+    if (!G.running) { resetGame(); gameInit(); }
+    if (G.paused) {
+      G.paused = false;
+      G.raf = requestAnimationFrame(gameLoop);
+    } else {
+      G.paused = true;
+      cancelAnimationFrame(G.raf);
+      G.raf = null;
+    }
+  }
+  G.keys[e.key] = true;
+}
+
+document.addEventListener('keyup', e => { G.keys[e.key] = false; });
+</script>
+</body>
+</html>
