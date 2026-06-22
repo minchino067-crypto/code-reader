@@ -8,21 +8,39 @@ const parser = new Parser({ timeout: 9000 });
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// nitter.net が唯一安定して動くインスタンス
-const INSTANCES = [
+// RSSHubの公開インスタンス（クラウドIPでも動作）
+const RSSHUB_INSTANCES = [
+  'https://rsshub.app',
+  'https://rsshub.rssforever.com',
+  'https://hub.slar.run',
+];
+
+// Nitterインスタンス（ローカル動作用フォールバック）
+const NITTER_INSTANCES = [
   'https://nitter.net',
   'https://nitter.poast.org',
-  'https://nitter.privacydev.net',
 ];
 
 async function fetchRSS(urlPath) {
-  for (const base of INSTANCES) {
+  // まずRSSHubを試す（クラウド環境向け）
+  for (const base of RSSHUB_INSTANCES) {
     try {
       const feed = await parser.parseURL(base + urlPath);
-      return { ok: true, feed, instance: base };
+      if (feed && feed.items && feed.items.length > 0) {
+        return { ok: true, feed, instance: base, source: 'rsshub' };
+      }
     } catch (_) {}
   }
-  return { ok: false, error: 'Nitterに接続できませんでした' };
+  // フォールバック: Nitter（ローカル向け）
+  for (const base of NITTER_INSTANCES) {
+    try {
+      const feed = await parser.parseURL(base + urlPath.replace('/rsshub', ''));
+      if (feed && feed.items && feed.items.length > 0) {
+        return { ok: true, feed, instance: base, source: 'nitter' };
+      }
+    } catch (_) {}
+  }
+  return { ok: false, error: 'フィードの取得に失敗しました（接続できるサーバーがありません）' };
 }
 
 // img src を content HTML から全て抽出
@@ -35,24 +53,41 @@ function extractImages(html) {
 }
 
 // RSS item → tweet オブジェクト
-function parseItem(item) {
+function parseItem(item, source) {
   const title = item.title || '';
+  const contentHtml = item.content || item['content:encoded'] || '';
 
-  // リポスト判定: "RT by @username: text"
-  const rtMatch = title.match(/^RT by @(\S+?):\s*/i);
-  const isRetweet = !!rtMatch;
-  const retweetedBy = rtMatch ? rtMatch[1] : null;  // リポストした人
+  let isRetweet = false;
+  let retweetedBy = null;
+  let author = '';
 
-  // 投稿者: dc:creator または creator フィールド
-  const author = (item['dc:creator'] || item.creator || '').replace(/^@/, '');
+  if (source === 'nitter') {
+    // Nitter: "RT by @username: text"
+    const rtMatch = title.match(/^RT by @(\S+?):\s*/i);
+    isRetweet = !!rtMatch;
+    retweetedBy = rtMatch ? rtMatch[1] : null;
+    author = (item['dc:creator'] || item.creator || '').replace(/^@/, '');
+  } else {
+    // RSSHub: titleが "RT @username: text" か通常ツイート
+    const rtMatch = title.match(/^RT @(\S+?):\s*/i);
+    isRetweet = !!rtMatch;
+    retweetedBy = rtMatch ? rtMatch[1] : null;
+    // RSSHubはauthorフィールドかtitleの@から取得
+    const creatorRaw = item['dc:creator'] || item.creator || item.author || '';
+    author = creatorRaw.replace(/^@/, '');
+    if (!author) {
+      const m = title.match(/^(?:RT @\S+: )?@?(\S+)/);
+      if (m) author = m[1].replace(/:$/, '');
+    }
+  }
 
-  // テキスト: contentSnippet（HTMLタグなし）
-  const text = (item.contentSnippet || '').replace(/\n{3,}/g, '\n\n').trim();
+  // テキスト（HTMLタグ除去）
+  const text = (item.contentSnippet || contentHtml.replace(/<[^>]+>/g, ''))
+    .replace(/\n{3,}/g, '\n\n').trim();
 
-  // 画像: content HTML から抽出
-  const images = extractImages(item.content || '');
+  // 画像
+  const images = extractImages(contentHtml);
 
-  // 時刻: isoDate が最も信頼できる
   const time = item.isoDate || null;
 
   return {
@@ -70,9 +105,10 @@ function parseItem(item) {
 // ユーザーフィード
 app.get('/api/user/:username', async (req, res) => {
   const { username } = req.params;
-  const result = await fetchRSS(`/${username}/rss`);
+  // RSSHub: /twitter/user/:username  Nitter: /:username/rss
+  const result = await fetchRSS(`/twitter/user/${username}`);
   if (!result.ok) return res.status(502).json({ error: result.error });
-  const tweets = result.feed.items.map(parseItem);
+  const tweets = result.feed.items.map(i => parseItem(i, result.source));
   res.json({ tweets, instance: result.instance });
 });
 
@@ -80,19 +116,10 @@ app.get('/api/user/:username', async (req, res) => {
 app.get('/api/search', async (req, res) => {
   const { q } = req.query;
   if (!q) return res.status(400).json({ error: 'クエリが必要です' });
-  const result = await fetchRSS(`/search/rss?q=${encodeURIComponent(q)}`);
+  // RSSHub: /twitter/keyword/:keyword
+  const result = await fetchRSS(`/twitter/keyword/${encodeURIComponent(q)}`);
   if (!result.ok) return res.status(502).json({ error: result.error });
-
-  const tweets = result.feed.items.map(item => {
-    // 検索結果のtitleは "@author: text" か "RT by @..." 形式
-    const tweet = parseItem(item);
-    // authorが空なら title から抜く
-    if (!tweet.author || tweet.author === 'unknown') {
-      const m = item.title?.match(/^(?:RT by @\S+: )?@?(\S+?):/);
-      if (m) tweet.author = m[1];
-    }
-    return tweet;
-  });
+  const tweets = result.feed.items.map(i => parseItem(i, result.source));
   res.json({ tweets, instance: result.instance });
 });
 
