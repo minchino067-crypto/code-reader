@@ -8,39 +8,22 @@ const parser = new Parser({ timeout: 9000 });
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// RSSHubの公開インスタンス（クラウドIPでも動作）
-const RSSHUB_INSTANCES = [
-  'https://rsshub.app',
-  'https://rsshub.rssforever.com',
-  'https://hub.slar.run',
-];
-
-// Nitterインスタンス（ローカル動作用フォールバック）
 const NITTER_INSTANCES = [
   'https://nitter.net',
   'https://nitter.poast.org',
+  'https://nitter.privacydev.net',
 ];
 
 async function fetchRSS(urlPath) {
-  // まずRSSHubを試す（クラウド環境向け）
-  for (const base of RSSHUB_INSTANCES) {
-    try {
-      const feed = await parser.parseURL(base + urlPath);
-      if (feed && feed.items && feed.items.length > 0) {
-        return { ok: true, feed, instance: base, source: 'rsshub' };
-      }
-    } catch (_) {}
-  }
-  // フォールバック: Nitter（ローカル向け）
   for (const base of NITTER_INSTANCES) {
     try {
-      const feed = await parser.parseURL(base + urlPath.replace('/rsshub', ''));
+      const feed = await parser.parseURL(base + urlPath);
       if (feed && feed.items && feed.items.length > 0) {
         return { ok: true, feed, instance: base, source: 'nitter' };
       }
     } catch (_) {}
   }
-  return { ok: false, error: 'フィードの取得に失敗しました（接続できるサーバーがありません）' };
+  return { ok: false, error: 'フィードの取得に失敗しました' };
 }
 
 // img src を content HTML から全て抽出
@@ -105,8 +88,7 @@ function parseItem(item, source) {
 // ユーザーフィード
 app.get('/api/user/:username', async (req, res) => {
   const { username } = req.params;
-  // RSSHub: /twitter/user/:username  Nitter: /:username/rss
-  const result = await fetchRSS(`/twitter/user/${username}`);
+  const result = await fetchRSS(`/${username}/rss`);
   if (!result.ok) return res.status(502).json({ error: result.error });
   const tweets = result.feed.items.map(i => parseItem(i, result.source));
   res.json({ tweets, instance: result.instance });
@@ -116,8 +98,7 @@ app.get('/api/user/:username', async (req, res) => {
 app.get('/api/search', async (req, res) => {
   const { q } = req.query;
   if (!q) return res.status(400).json({ error: 'クエリが必要です' });
-  // RSSHub: /twitter/keyword/:keyword
-  const result = await fetchRSS(`/twitter/keyword/${encodeURIComponent(q)}`);
+  const result = await fetchRSS(`/search/rss?q=${encodeURIComponent(q)}`);
   if (!result.ok) return res.status(502).json({ error: result.error });
   const tweets = result.feed.items.map(i => parseItem(i, result.source));
   res.json({ tweets, instance: result.instance });
