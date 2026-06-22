@@ -26,6 +26,39 @@ async function fetchRSS(urlPath) {
   return { ok: false, error: 'フィードの取得に失敗しました' };
 }
 
+// 複数RSSパスを並列取得して重複除去・時刻順ソートで返す
+async function fetchUserRSSAll(username) {
+  const paths = [
+    `/${username}/rss`,
+    `/${username}/with_replies/rss`,
+    `/${username}/media/rss`,
+  ];
+  let instance = null;
+  const results = await Promise.allSettled(paths.map(p => fetchRSS(p)));
+  const seen = new Set();
+  const allItems = [];
+
+  for (const r of results) {
+    if (r.status !== 'fulfilled' || !r.value.ok) continue;
+    if (!instance) instance = r.value.instance;
+    for (const item of r.value.feed.items) {
+      const id = item.guid || item.link || item.title;
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      allItems.push(parseItem(item, 'nitter'));
+    }
+  }
+
+  allItems.sort((a, b) => {
+    if (!a.time) return 1;
+    if (!b.time) return -1;
+    return new Date(b.time) - new Date(a.time);
+  });
+
+  if (allItems.length === 0) return { ok: false, error: 'フィードの取得に失敗しました' };
+  return { ok: true, tweets: allItems, instance };
+}
+
 // img src を content HTML から全て抽出
 function extractImages(html) {
   const imgs = [];
@@ -85,13 +118,12 @@ function parseItem(item, source) {
   };
 }
 
-// ユーザーフィード
+// ユーザーフィード（3種のRSSを合算）
 app.get('/api/user/:username', async (req, res) => {
   const { username } = req.params;
-  const result = await fetchRSS(`/${username}/rss`);
+  const result = await fetchUserRSSAll(username);
   if (!result.ok) return res.status(502).json({ error: result.error });
-  const tweets = result.feed.items.map(i => parseItem(i, result.source));
-  res.json({ tweets, instance: result.instance });
+  res.json({ tweets: result.tweets, instance: result.instance });
 });
 
 // 検索
@@ -104,20 +136,5 @@ app.get('/api/search', async (req, res) => {
   res.json({ tweets, instance: result.instance });
 });
 
-// nitter.net HTMLが使えるか確認
-app.get('/api/test', async (req, res) => {
-  const fetch = require('node-fetch');
-  try {
-    const r = await fetch('https://nitter.net/elonmusk', {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-      timeout: 8000,
-    });
-    const html = await r.text();
-    const isReal = html.includes('timeline-item') || html.includes('tweet-content');
-    res.json({ status: r.status, isReal, snippet: html.slice(0, 200) });
-  } catch (e) {
-    res.json({ error: e.message });
-  }
-});
 
 app.listen(PORT, () => console.log(`Server running at http://localhost:${PORT}`));
