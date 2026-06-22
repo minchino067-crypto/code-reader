@@ -104,24 +104,20 @@ app.get('/api/search', async (req, res) => {
   res.json({ tweets, instance: result.instance });
 });
 
-// どのRSSソースがこのサーバーから繋がるか確認用
+// nitter.net HTMLが使えるか確認
 app.get('/api/test', async (req, res) => {
-  const tests = [
-    { name: 'nitter.net RSS',          url: 'https://nitter.net/elonmusk/rss' },
-    { name: 'nitter.poast.org RSS',    url: 'https://nitter.poast.org/elonmusk/rss' },
-    { name: 'rsshub.app twitter',      url: 'https://rsshub.app/twitter/user/elonmusk' },
-    { name: 'rsshub.rssforever.com',   url: 'https://rsshub.rssforever.com/twitter/user/elonmusk' },
-    { name: 'hub.slar.run',            url: 'https://hub.slar.run/twitter/user/elonmusk' },
-  ];
-  const results = await Promise.all(tests.map(async t => {
-    try {
-      const feed = await parser.parseURL(t.url);
-      return { name: t.name, ok: true, items: feed.items?.length || 0 };
-    } catch (e) {
-      return { name: t.name, ok: false, error: e.message.slice(0, 80) };
-    }
-  }));
-  res.json(results);
+  const fetch = require('node-fetch');
+  try {
+    const r = await fetch('https://nitter.net/elonmusk', {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+      timeout: 8000,
+    });
+    const html = await r.text();
+    const isReal = html.includes('timeline-item') || html.includes('tweet-content');
+    res.json({ status: r.status, isReal, snippet: html.slice(0, 200) });
+  } catch (e) {
+    res.json({ error: e.message });
+  }
 });
 
 app.listen(PORT, () => console.log(`Server running at http://localhost:${PORT}`));
